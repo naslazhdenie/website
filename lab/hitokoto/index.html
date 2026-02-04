@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>一言 Hitokoto</title>
+</head>
+<body>
+<a href="/website/index.html">返回主页</a>
+<hr/>
+<div id="hText">:D 获取中...</div>
+<div id="hInfo"></div>
+<button id="refresh">获取</button>
+    <script>
+        const hText = document.getElementById('hText');
+        const hInfo = document.getElementById('hInfo');
+        const refresh = document.getElementById('refresh');
+        const typeMap = {a: '动画', b: '漫画', c: '游戏', d: '文学', e: '原创', f: '来自网络', g: '其他', h: '影视', i: '诗词', j: '网易云', k: '哲学', l: '抖机灵'};
+        function formatTimestamp(timestamp) {
+            if (!timestamp || timestamp === '2147483647') return '2038/01/19 11:14:07';
+            const date = new Date(timestamp * 1000); // 转换为毫秒
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
+        }
+        function getHitokoto() {
+            hText.innerText = ':D 获取中...';
+            hInfo.innerHTML = '';
+            refresh.disabled = true;
+            fetch('https://v1.hitokoto.cn/')
+            .then(res => {
+                if (!res.ok) throw new Error('请求失败');
+                return res.json();
+            })
+            .then(data => {
+                hText.innerText = data.hitokoto;
+                const infohtml = `<hr/><div>ID：${data.id || '（为什么没有ID呢）'}</div>
+                                  <div>UUID：${data.uuid || '（为什么没有UUID呢）'}</div>
+                                  <div>类型：${typeMap[data.type] || '（其他）'}</div><!--data.type--><!--其他	作为 动画 类型处理-->
+                                  <div>出处：${data.from || '（未知）'}</div>
+                                  <div>作者：${data.from_who || '（佚名）'}</div>
+                                  <div>添加者：${data.creator || '（匿名）'}</div>
+                                  <div>添加者UID：${data.creator_uid || '（匿名添加者不涉及）'}</div>
+                                  <div>添加时间：${formatTimestamp(data.created_at)}（${data.created_at || '2147483647'}）</div>
+                                  <div>提交方式：${data.commit_from || '（未知）'}</div>
+                                  <div>审核员标识：${data.reviewer || '（未知）'}</div>
+                                  <div>长度：${data.length || '0'}</div>`;
+                hInfo.innerHTML = infohtml;
+            })
+            .catch(err => {
+                hText.innerText = '加载失败，请刷新重试！';
+                console.error('请求错误：', err);
+            })
+            .finally(() => {
+                refresh.disabled = false;
+            });
+        }
+        window.onload = getHitokoto;
+        refresh.addEventListener('click', getHitokoto);
+    </script>
+<br/><p>截至2026/02/05 00:00，<a href="https://hitokoto.cn/" target="blink">一言</a>中存储了9530条句子。<b>请勿频繁点击按钮</b></p>
+</body>
+</html>
