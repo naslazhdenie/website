@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>简易答题系统</title>
+    <style>
+        /* 简单样式，保证基本布局和滚动 */
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #app { max-width: 1200px; margin: auto; }
+        button { margin: 4px; cursor: pointer; }
+        .question-editor { border: 1px solid #ccc; margin-top: 20px; padding: 15px; background: #f9f9f9; }
+        .subquestion-list { max-height: 400px; overflow-y: auto; margin: 10px 0; }
+        .subquestion-item { border: 1px solid #ddd; margin-bottom: 10px; padding: 10px; background: white; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
+        img { max-width: 200px; max-height: 150px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <h1>简易答题系统</h1>
+    <hr>
+    <div>
+        <button onclick="showPanel('start')">首页</button>
+        <button onclick="showPanel('call')">点名答题</button>
+        <button onclick="showPanel('students')">学生名单</button>
+        <button onclick="showPanel('rank')">排行榜</button>
+        <button onclick="showPanel('quizDirect')">直接答题</button>
+        <button onclick="showPanel('admin')">题库管理</button>
+    </div>
+    <hr>
+
+    <!-- 首页面板 -->
+    <div id="panelStart" style="display:block">
+        <p>欢迎使用答题互动系统。每次随机抽取5题，每题10分，用时越短排名越高。</p>
+        <p>题库包含中亚地理示例，可自由增删改题目。至少需要5道子题才能开始答题。</p>
+        <p><a href="/website/index.html">返回首页</a></p>
+    </div>
+
+    <!-- 点名面板 -->
+    <div id="panelCall" style="display:none">
+        <h3>随机点名</h3>
+        <div id="callResult" style="border:1px solid #ccc; padding:12px; margin:10px 0;">---</div>
+        <button onclick="doRandomCall()">随机抽取</button>
+        <button onclick="confirmCallAndStart()">确认并开始答题</button>
+        <button onclick="showPanel('start')">返回</button>
+        <p id="selectedStudentName" style="display:none;"></p>
+    </div>
+
+    <!-- 学生名单管理 -->
+    <div id="panelStudents" style="display:none">
+        <h3>学生名单</h3>
+        <div>
+            <button onclick="addStudentPrompt()">添加学生</button>
+            <button onclick="exportStudentsJSON()">导出学生(JSON)</button>
+            <input type="file" id="importStudentsFile" accept=".json" style="display:none" onchange="importStudentsJSON(this)">
+            <button onclick="document.getElementById('importStudentsFile').click()">导入学生(JSON)</button>
+        </div>
+        <div id="studentListContainer" style="margin:10px 0; border:1px solid #ddd; padding:10px;"></div>
+        <button onclick="showPanel('start')">返回</button>
+    </div>
+
+    <!-- 排行榜 -->
+    <div id="panelRank" style="display:none">
+        <h3>排行榜</h3>
+        <button onclick="clearRankings()">清空排行榜</button>
+        <button onclick="exportRankingsJSON()">导出排行榜(JSON)</button>
+        <input type="file" id="importRankingsFile" accept=".json" style="display:none" onchange="importRankingsJSON(this)">
+        <button onclick="document.getElementById('importRankingsFile').click()">导入排行榜(JSON)</button>
+        <div id="rankListContainer" style="margin:10px 0; border:1px solid #ddd; padding:10px;"></div>
+        <button onclick="showPanel('start')">返回</button>
+    </div>
+
+    <!-- 直接答题 -->
+    <div id="panelQuizDirect" style="display:none">
+        <h3>输入姓名开始答题</h3>
+        <input type="text" id="directQuizName" placeholder="请输入姓名">
+        <button onclick="startQuizByName()">开始答题</button>
+        <button onclick="showPanel('start')">返回</button>
+    </div>
+
+    <!-- 答题界面 -->
+    <div id="panelQuiz" style="display:none">
+        <h3>答题中</h3>
+        <p>答题人: <span id="quizUserName"></span>  用时: <span id="quizTimer">0</span> 秒</p>
+        <div id="quizQuestionsArea"></div>
+        <button onclick="submitQuiz()">提交答卷</button>
+        <button onclick="exitQuiz()">退出</button>
+    </div>
+
+    <!-- 结果面板 -->
+    <div id="panelResult" style="display:none">
+        <h3>答题结果</h3>
+        <div id="resultSummary"></div>
+        <div id="resultDetails"></div>
+        <button onclick="showPanel('start')">返回首页</button>
+        <button onclick="retakeQuiz()">再次答题</button>
+    </div>
+
+    <!-- 题库管理面板（内嵌编辑表单，无悬浮窗） -->
+    <div id="panelAdmin" style="display:none">
+        <h3>题库管理 (单题/题组)</h3>
+        <div>
+            <button onclick="openAddSingle()">添加单题</button>
+            <button onclick="openAddGroup()">添加题组</button>
+            <button onclick="exportQuestionsJSON()">导出题库(JSON)</button>
+            <input type="file" id="importQuestionsFile" accept=".json" style="display:none" onchange="importQuestionsJSON(this)">
+            <button onclick="document.getElementById('importQuestionsFile').click()">导入题库(JSON)</button>
+        </div>
+        <!-- 题目列表表格 -->
+        <div id="questionListAdmin" style="margin:10px 0; border:1px solid #ddd; padding:10px; max-height:400px; overflow:auto;"></div>
+        <!-- 内嵌编辑表单（初始隐藏） -->
+        <div id="questionEditor" style="display:none;" class="question-editor"></div>
+        <button onclick="showPanel('start')">退出管理</button>
+    </div>
+</div>
+
+<script>
+    // 存储键名
+    const COOKIE_STUDENTS = "quiz_students";
+    const COOKIE_QUESTIONS = "quiz_questions";
+    const COOKIE_RANKINGS = "quiz_rankings";
+
+    // Cookie 存储
+    function setCookie(name, value, days=30) {
+        let expires = "";
+        if (days) {
+            let date = new Date();
+            date.setTime(date.getTime() + days*24*60*60*1000);
+            expires = "; expires=" + date.toUTCString();
+        }
+        document.cookie = name + "=" + encodeURIComponent(JSON.stringify(value)) + expires + "; path=/";
+    }
+    function getCookie(name) {
+        let nameEQ = name + "=";
+        let ca = document.cookie.split(';');
+        for(let i=0;i<ca.length;i++) {
+            let c = ca[i];
+            while (c.charAt(0)==' ') c = c.substring(1,c.length);
+            if (c.indexOf(nameEQ) == 0) {
+                try {
+                    return JSON.parse(decodeURIComponent(c.substring(nameEQ.length,c.length)));
+                } catch(e) { return null; }
+            }
+        }
+        return null;
+    }
+
+    // 全局数据
+    let students = ["李华", "张明", "王丽", "赵子涵", "刘欣然"];
+    let questionBank = [];
+    let rankings = [];
+
+    // 示例题库
+    function initExampleQuestions() {
+        return [
+            { id: "q1", type: "single", text: "中亚地区主要的气候类型是？", image: "", options: ["温带海洋性气候", "温带大陆性气候", "地中海气候", "高原山地气候"], correct: "B", explanation: "深居内陆，距海遥远，为温带大陆性气候。" },
+            { id: "q2", type: "single", text: "下列关于中亚锡尔河的水文特征，正确的是？", image: "", options: ["径流量季节变化小", "主要补给为雨水", "有春汛和夏汛", "无结冰期"], correct: "C", explanation: "冰雪融水补给，春汛+夏汛。" },
+            { id: "q3", type: "single", text: "中亚地势特征为？", image: "", options: ["东南高西北低", "东北高西南低", "中间高四周低", "平坦无起伏"], correct: "A", explanation: "天山、帕米尔位于东南部。" },
+            { id: "q4", type: "single", text: "中亚地区棉花种植的有利自然条件不包括？", image: "", options: ["光照充足", "昼夜温差大", "降水丰沛", "灌溉水源"], correct: "C", explanation: "降水稀少，依赖灌溉。" },
+            { id: "g1", type: "group", material: "材料：中亚河流多内流河，咸海面积萎缩严重。", image: "", questions: [
+                { subId: "g1-1", text: "该区域主要河流补给类型是？", options: ["雨水补给", "冰川融水补给", "湖泊水", "地下水"], correct: "B", explanation: "冰川融水为主" },
+                { subId: "g1-2", text: "咸海面积缩小的主要原因？", options: ["气候变暖", "阿姆河锡尔河过度引水灌溉", "降水量减少", "地下水超采"], correct: "B", explanation: "人类灌溉导致入湖水量锐减" }
+            ]}
+        ];
+    }
+
+    // 加载or保存数据
+    function loadData() {
+        let storedStudents = getCookie(COOKIE_STUDENTS);
+        if(storedStudents) students = storedStudents;
+        let storedQuestions = getCookie(COOKIE_QUESTIONS);
+        if(storedQuestions) questionBank = storedQuestions;
+        else questionBank = initExampleQuestions();
+        let storedRankings = getCookie(COOKIE_RANKINGS);
+        if(storedRankings) rankings = storedRankings;
+        else rankings = [];
+    }
+    function saveAllData() {
+        setCookie(COOKIE_STUDENTS, students);
+        setCookie(COOKIE_QUESTIONS, questionBank);
+        setCookie(COOKIE_RANKINGS, rankings);
+    }
+
+    // 展开所有子题（单题+题组内小题）
+    function flattenQuestions() {
+        let flat = [];
+        questionBank.forEach(q => {
+            if(q.type === "single") {
+                flat.push({
+                    id: q.id,
+                    type: "single",
+                    text: q.text,
+                    image: q.image || "",
+                    options: q.options,
+                    correct: q.correct,
+                    explanation: q.explanation || ""
+                });
+            } else if(q.type === "group") {
+                q.questions.forEach((sub, idx) => {
+                    flat.push({
+                        id: `${q.id}_${idx}`,
+                        type: "group_sub",
+                        material: q.material,
+                        groupImage: q.image || "",
+                        subText: sub.text,
+                        options: sub.options,
+                        correct: sub.correct,
+                        explanation: sub.explanation || `正确答案: ${sub.correct}`,
+                        displayLabel: `${q.id}-${idx+1}`
+                    });
+                });
+            }
+        });
+        return flat;
+    }
+
+    // 检查题目数量是否足够（至少5子题）
+    function isQuestionEnough() {
+        return flattenQuestions().length >= 5;
+    }
+
+    // 随机抽5题
+    function pickRandomQuestions() {
+        let flat = flattenQuestions();
+        if(flat.length === 0) return [];
+        // 随机打乱
+        for(let i=flat.length-1;i>0;i--) {
+            const j = Math.floor(Math.random()*(i+1));
+            [flat[i], flat[j]] = [flat[j], flat[i]];
+        }
+        return flat.slice(0,5);
+    }
+
+    // 渲染排行榜（增加答题时间列）
+    function renderRanking() {
+        // 按分数降序，用时升序
+        let sorted = [...rankings].sort((a,b)=> {
+            if(a.score !== b.score) return b.score - a.score;
+            return a.timeUsed - b.timeUsed;
+        });
+        let html = "<table><tr><th>排名</th><th>姓名</th><th>分数</th><th>用时(秒)</th><th>答题时间</th></tr>";
+        sorted.forEach((r, idx) => {
+            let dateStr = new Date(r.timestamp).toLocaleString();
+            html += `<tr>
+                        <td>${idx+1}</td>
+                        <td>${escapeHtml(r.name)}</td>
+                        <td>${r.score}</td>
+                        <td>${r.timeUsed}</td>
+                        <td>${dateStr}</td>
+                     </tr>`;
+        });
+        html += "</table>";
+        document.getElementById("rankListContainer").innerHTML = html;
+    }
+
+    // 添加排名，返回名次（基于排序后的索引）
+    function addRanking(name, score, timeSec) {
+        let newRecord = { name, score, timeUsed: timeSec, timestamp: Date.now() };
+        rankings.push(newRecord);
+        saveAllData();
+        renderRanking();
+        // 重新排序并返回名次
+        let sorted = [...rankings].sort((a,b)=> {
+            if(a.score !== b.score) return b.score - a.score;
+            return a.timeUsed - b.timeUsed;
+        });
+        let rank = sorted.findIndex(r => r.timestamp === newRecord.timestamp) + 1;
+        return rank;
+    }
+
+    // 学生列表渲染
+    function renderStudentList() {
+        let html = "<ul>";
+        students.forEach((s,idx)=> {
+            html += `<li>${escapeHtml(s)} <button onclick="deleteStudent(${idx})">删除</button></li>`;
+        });
+        html += "</ul><div><input type='text' id='newStudentName' placeholder='新学生姓名'><button onclick='addStudentFromInput()'>添加</button></div>";
+        document.getElementById("studentListContainer").innerHTML = html;
+    }
+    function deleteStudent(idx) { students.splice(idx,1); saveAllData(); renderStudentList(); }
+    function addStudentFromInput() {
+        let inp = document.getElementById("newStudentName");
+        let name = inp.value.trim();
+        if(name) { students.push(name); saveAllData(); renderStudentList(); inp.value=""; }
+    }
+    function addStudentPrompt() {
+        let name = prompt("请输入学生姓名");
+        if(name && name.trim()) { students.push(name.trim()); saveAllData(); renderStudentList(); }
+    }
+
+    // 题库管理：内嵌编辑表单（无悬浮窗
+    let currentEditIndex = null;   // null means 新增
+    let currentEditType = null;    // 'single' or 'group'
+
+    function renderAdminQuestions() {
+        let container = document.getElementById("questionListAdmin");
+        let html = `<table><tr><th>ID</th><th>类型</th><th>内容简述</th><th>操作</th></tr>`;
+        questionBank.forEach((q, idx) => {
+            let preview = q.type==="single"? q.text.substring(0,40) : `题组:${q.questions.length}小题 | ${q.material.substring(0,30)}`;
+            html += `<tr>
+                        <td>${escapeHtml(q.id)}</td>
+                        <td>${q.type==='single'?'单题':'题组'}</td>
+                        <td>${escapeHtml(preview)}</td>
+                        <td>
+                            <button onclick="editQuestion(${idx})">编辑</button>
+                            <button onclick="deleteQuestion(${idx})">删除</button>
+                        </td>
+                     </tr>`;
+        });
+        html += `</table>`;
+        container.innerHTML = html;
+    }
+    function deleteQuestion(idx) {
+        if(confirm("删除题目？")){
+            questionBank.splice(idx,1);
+            saveAllData();
+            renderAdminQuestions();
+            hideEditor();
+        }
+    }
+
+    // 隐藏编辑器并显示列表
+    function hideEditor() {
+        document.getElementById("questionEditor").style.display = "none";
+        document.getElementById("questionListAdmin").style.display = "block";
+        currentEditIndex = null;
+        currentEditType = null;
+    }
+
+    // 添加单题
+    function openAddSingle() {
+        currentEditIndex = null;
+        currentEditType = "single";
+        showSingleForm(null);
+    }
+    // 添加题组
+    function openAddGroup() {
+        currentEditIndex = null;
+        currentEditType = "group";
+        showGroupForm(null);
+    }
+    // 编辑题目
+    function editQuestion(idx) {
+        currentEditIndex = idx;
+        let q = questionBank[idx];
+        currentEditType = q.type;
+        if(q.type === "single") {
+            showSingleForm(q);
+        } else {
+            showGroupForm(q);
+        }
+    }
+
+    // 显示单题表单（内嵌）
+    function showSingleForm(question) {
+        let q = question || { id: "", text: "", image: "", options: ["","","",""], correct: "A", explanation: "" };
+        let editorDiv = document.getElementById("questionEditor");
+        editorDiv.innerHTML = `
+            <h3>${currentEditIndex!==null?"编辑单题":"添加单题"}</h3>
+            <label>题干: <input id="singleText" value="${escapeHtml(q.text)}" style="width:100%"></label><br>
+            <label>图片URL或Base64: <input id="singleImage" value="${escapeHtml(q.image)}" style="width:100%"></label><br>
+            <label>选项A: <input id="optA" value="${escapeHtml(q.options[0]||'')}"></label><br>
+            <label>选项B: <input id="optB" value="${escapeHtml(q.options[1]||'')}"></label><br>
+            <label>选项C: <input id="optC" value="${escapeHtml(q.options[2]||'')}"></label><br>
+            <label>选项D: <input id="optD" value="${escapeHtml(q.options[3]||'')}"></label><br>
+            <label>正确答案: 
+                <select id="singleCorrect">
+                    <option value="A" ${q.correct==='A'?'selected':''}>A</option>
+                    <option value="B" ${q.correct==='B'?'selected':''}>B</option>
+                    <option value="C" ${q.correct==='C'?'selected':''}>C</option>
+                    <option value="D" ${q.correct==='D'?'selected':''}>D</option>
+                </select>
+            </label><br>
+            <label>解析: <textarea id="singleExplanation" rows="3" style="width:100%">${escapeHtml(q.explanation||'')}</textarea></label><br>
+            <button onclick="saveSingle()">保存</button>
+            <button onclick="hideEditor()">取消</button>
+        `;
+        document.getElementById("questionListAdmin").style.display = "none";
+        editorDiv.style.display = "block";
+    }
+
+    // 保存单题
+    function saveSingle() {
+        let text = document.getElementById("singleText").value.trim();
+        let image = document.getElementById("singleImage").value.trim();
+        let optA = document.getElementById("optA").value.trim();
+        let optB = document.getElementById("optB").value.trim();
+        let optC = document.getElementById("optC").value.trim();
+        let optD = document.getElementById("optD").value.trim();
+        let correct = document.getElementById("singleCorrect").value;
+        let explanation = document.getElementById("singleExplanation").value;
+        if(!text || !optA || !optB || !optC || !optD) {
+            alert("请完整填写题干和四个选项");
+            return;
+        }
+        let newQuestion = {
+            id: currentEditIndex!==null ? questionBank[currentEditIndex].id : ("q"+Date.now()+"_"+Math.floor(Math.random()*10000)),
+            type: "single",
+            text: text,
+            image: image,
+            options: [optA, optB, optC, optD],
+            correct: correct,
+            explanation: explanation
+        };
+        if(currentEditIndex !== null) questionBank[currentEditIndex] = newQuestion;
+        else questionBank.push(newQuestion);
+        saveAllData();
+        renderAdminQuestions();
+        hideEditor();
+    }
+
+    // 显示题组表单
+    function showGroupForm(question) {
+        let q = question || { id: "", material: "", image: "", questions: [
+            { text: "", options: ["","","",""], correct: "A", explanation: "" },
+            { text: "", options: ["","","",""], correct: "B", explanation: "" }
+        ] };
+        let editorDiv = document.getElementById("questionEditor");
+        editorDiv.innerHTML = `
+            <h3>${currentEditIndex!==null?"编辑题组":"添加题组"}</h3>
+            <label>材料文本: <textarea id="groupMaterial" rows="2" style="width:100%">${escapeHtml(q.material)}</textarea></label><br>
+            <label>图片URL/Base64: <input id="groupImage" value="${escapeHtml(q.image)}" style="width:100%"></label><br>
+            <div id="groupSubList" class="subquestion-list"></div>
+            <button onclick="addSubQuestion()">增加小题</button><br><br>
+            <button onclick="saveGroup()">保存</button>
+            <button onclick="hideEditor()">取消</button>
+        `;
+        // 渲染子题列表
+        function renderSubs() {
+            let container = document.getElementById("groupSubList");
+            if(!container) return;
+            let subs = window._tempGroupSubs || q.questions.map(sub => ({ ...sub }));
+            window._tempGroupSubs = subs;
+            let html = "";
+            subs.forEach((sub, idx) => {
+                html += `<div class="subquestion-item">
+                            <h4>小题 ${idx+1}</h4>
+                            <label>题干: <input class="subText" value="${escapeHtml(sub.text)}" style="width:100%"></label><br>
+                            <label>A: <input class="subOptA" value="${escapeHtml(sub.options[0]||'')}"></label>
+                            <label>B: <input class="subOptB" value="${escapeHtml(sub.options[1]||'')}"></label>
+                            <label>C: <input class="subOptC" value="${escapeHtml(sub.options[2]||'')}"></label>
+                            <label>D: <input class="subOptD" value="${escapeHtml(sub.options[3]||'')}"></label><br>
+                            <label>正确答案: <select class="subCorrect">
+                                <option value="A" ${sub.correct==='A'?'selected':''}>A</option>
+                                <option value="B" ${sub.correct==='B'?'selected':''}>B</option>
+                                <option value="C" ${sub.correct==='C'?'selected':''}>C</option>
+                                <option value="D" ${sub.correct==='D'?'selected':''}>D</option>
+                            </select></label><br>
+                            <label>解析: <input class="subExplanation" value="${escapeHtml(sub.explanation||'')}" style="width:100%"></label>
+                            ${subs.length > 2 ? `<button onclick="removeSubQuestion(this)">删除小题</button>` : '<span style="color:gray;">至少保留2小题</span>'}
+                        </div>`;
+            });
+            container.innerHTML = html;
+        }
+        window._tempGroupSubs = q.questions.map(sub => ({ ...sub }));
+        renderSubs();
+        
+        // 绑定全局函数供动态按钮使用
+        window.addSubQuestion = function() {
+            let subs = window._tempGroupSubs;
+            subs.push({ text: "", options: ["","","",""], correct: "A", explanation: "" });
+            renderSubs();
+        };
+        window.removeSubQuestion = function(btn) {
+            let subs = window._tempGroupSubs;
+            if(subs.length <= 2) { alert("题组至少保留2个小题"); return; }
+            let div = btn.closest(".subquestion-item");
+            let idx = Array.from(div.parentNode.children).indexOf(div);
+            subs.splice(idx,1);
+            renderSubs();
+        };
+        document.getElementById("questionListAdmin").style.display = "none";
+        editorDiv.style.display = "block";
+    }
+
+    // 保存题组
+    function saveGroup() {
+        let material = document.getElementById("groupMaterial").value.trim();
+        let image = document.getElementById("groupImage").value.trim();
+        if(!material) { alert("材料文本不能为空"); return; }
+        let subDivs = document.querySelectorAll("#groupSubList .subquestion-item");
+        let questions = [];
+        for(let i=0;i<subDivs.length;i++) {
+            let div = subDivs[i];
+            let text = div.querySelector(".subText").value.trim();
+            let optA = div.querySelector(".subOptA").value.trim();
+            let optB = div.querySelector(".subOptB").value.trim();
+            let optC = div.querySelector(".subOptC").value.trim();
+            let optD = div.querySelector(".subOptD").value.trim();
+            let correct = div.querySelector(".subCorrect").value;
+            let explanation = div.querySelector(".subExplanation").value.trim();
+            if(!text || !optA || !optB || !optC || !optD) {
+                alert(`小题${i+1}请完整填写题干和选项`);
+                return;
+            }
+            questions.push({
+                text: text,
+                options: [optA, optB, optC, optD],
+                correct: correct,
+                explanation: explanation
+            });
+        }
+        if(questions.length < 2) { alert("题组至少包含2个小题"); return; }
+        let groupId = currentEditIndex!==null ? questionBank[currentEditIndex].id : ("g"+Date.now()+"_"+Math.floor(Math.random()*10000));
+        let newGroup = {
+            id: groupId,
+            type: "group",
+            material: material,
+            image: image,
+            questions: questions
+        };
+        if(currentEditIndex !== null) questionBank[currentEditIndex] = newGroup;
+        else questionBank.push(newGroup);
+        saveAllData();
+        renderAdminQuestions();
+        hideEditor();
+    }
+
+    // 答题逻辑
+    let currentQuizUser = null;
+    let currentQuizQuestions = [];
+    let currentUserAnswers = [];
+    let quizStartTime = null;
+    let timerInterval = null;
+    let isQuizActive = false;
+
+    // 开始答题前检查题目数量
+    function startQuiz(username) {
+        if(!username) return;
+        if(!isQuestionEnough()) {
+            alert("当前有效题目不足5题，请先到「题库管理」中添加更多题目（单题或题组）！");
+            return;
+        }
+        if(timerInterval) clearInterval(timerInterval);
+        currentQuizUser = username;
+        currentQuizQuestions = pickRandomQuestions();
+        quizStartTime = Date.now();
+        isQuizActive = true;
+        document.getElementById("quizUserName").innerText = username;
+        renderQuizInterface();
+        document.getElementById("quizTimer").innerText = "0";
+        timerInterval = setInterval(()=>{ if(isQuizActive) document.getElementById("quizTimer").innerText = Math.floor((Date.now()-quizStartTime)/1000); },1000);
+        showPanel("quiz");
+    }
+
+    function renderQuizInterface() {
+        let container = document.getElementById("quizQuestionsArea");
+        let html = "";
+        currentQuizQuestions.forEach((q, idx) => {
+            let displayNum = q.displayLabel ? q.displayLabel : (q.id);
+            html += `<div style="border:1px solid #ccc; margin:12px 0; padding:10px;">
+                        <strong>${idx+1}. ${displayNum} `;
+            if(q.type==="single") html += escapeHtml(q.text);
+            else html += `[题组] ${escapeHtml(q.material)} - ${escapeHtml(q.subText)}`;
+            html += `</strong><br>`;
+            // 显示图片
+            if(q.type==="single" && q.image) html += `<div><img src="${escapeHtml(q.image)}" style="max-width:200px; max-height:150px;"></div>`;
+            if(q.type==="group_sub" && q.groupImage) html += `<div><img src="${escapeHtml(q.groupImage)}" style="max-width:200px;"></div>`;
+            html += `<div>`;
+            q.options.forEach((opt, optIdx) => {
+                let letter = String.fromCharCode(65+optIdx);
+                html += `<label><input type="radio" name="q${idx}" value="${letter}"> ${letter}. ${escapeHtml(opt)}</label> `;
+            });
+            html += `</div></div>`;
+        });
+        container.innerHTML = html;
+        currentUserAnswers = new Array(currentQuizQuestions.length).fill(null);
+        for(let i=0;i<currentQuizQuestions.length;i++){
+            let radios = document.getElementsByName(`q${i}`);
+            radios.forEach(r => {
+                r.addEventListener('change', () => { if(r.checked) currentUserAnswers[i] = r.value; });
+            });
+        }
+    }
+
+    function submitQuiz() {
+        if(!isQuizActive) return;
+        let elapsed = Math.floor((Date.now()-quizStartTime)/1000);
+        let totalScore = 0;
+        let results = [];
+        for(let i=0;i<currentQuizQuestions.length;i++){
+            let userAns = currentUserAnswers[i] || null;
+            let correctAns = currentQuizQuestions[i].correct;
+            let isCor = (userAns === correctAns);
+            if(isCor) totalScore += 10;
+            let qText = currentQuizQuestions[i].type==="single"? currentQuizQuestions[i].text : currentQuizQuestions[i].subText;
+            results.push({
+                text: qText,
+                userAnswer: userAns,
+                correctAnswer: correctAns,
+                isCorrect: isCor,
+                explanation: currentQuizQuestions[i].explanation || ""
+            });
+        }
+        let rank = addRanking(currentQuizUser, totalScore, elapsed);
+        if(timerInterval) clearInterval(timerInterval);
+        isQuizActive = false;
+        showResultPanel(currentQuizUser, totalScore, elapsed, rank, results);
+        showPanel("result");
+    }
+
+    function showResultPanel(username, score, timeUsed, rank, results) {
+        let summary = `<p><strong>${escapeHtml(username)}</strong> 得分: ${score}/50  用时: ${timeUsed}秒  名次: 第${rank}名</p>`;
+        let detail = `<ol>`;
+        results.forEach(r=>{
+            let status = r.isCorrect ? "正确" : "错误";
+            detail += `<li><strong>${escapeHtml(r.text)}</strong><br>你的答案: ${r.userAnswer||'未答'} 正确答案: ${r.correctAnswer} (${status})<br>${!r.isCorrect?`解析: ${escapeHtml(r.explanation)}`:""}</li>`;
+        });
+        detail += `</ol>`;
+        document.getElementById("resultSummary").innerHTML = summary;
+        document.getElementById("resultDetails").innerHTML = detail;
+    }
+
+    function exitQuiz() {
+        if(timerInterval) clearInterval(timerInterval);
+        isQuizActive = false;
+        // 重置状态
+        currentQuizUser = null;
+        currentQuizQuestions = [];
+        currentUserAnswers = [];
+        quizStartTime = null;
+        showPanel("start");
+    }
+    function retakeQuiz() {
+        if(currentQuizUser) startQuiz(currentQuizUser);
+        else showPanel("start");
+    }
+    function startQuizByName() {
+        let name = document.getElementById("directQuizName").value.trim();
+        if(!name) { alert("请输入姓名"); return; }
+        // 校验学生是否存在
+        if(!students.includes(name)) {
+            if(confirm(`“${name}” 不在学生名单中，是否添加到名单？`)) {
+                students.push(name);
+                saveAllData();
+                renderStudentList();
+            } else {
+                return;
+            }
+        }
+        startQuiz(name);
+    }
+    function doRandomCall() {
+        if(students.length){
+            let rand = students[Math.floor(Math.random()*students.length)];
+            document.getElementById("callResult").innerHTML = `被点到的同学：${escapeHtml(rand)}`;
+            document.getElementById("selectedStudentName").innerText = rand;
+        } else { alert("请先添加学生"); }
+    }
+    function confirmCallAndStart() {
+        let name = document.getElementById("selectedStudentName").innerText;
+        if(name) startQuiz(name);
+        else alert("请先随机点名");
+    }
+
+    // 导入导出
+    function exportStudentsJSON() { downloadJSON(students, "students.json"); }
+    function exportRankingsJSON() { downloadJSON(rankings, "rankings.json"); }
+    function exportQuestionsJSON() { downloadJSON(questionBank, "questions.json"); }
+    function downloadJSON(obj, filename) {
+        let dataStr = JSON.stringify(obj, null, 2);
+        let blob = new Blob([dataStr], {type: "application/json"});
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
+    }
+    function importStudentsJSON(input) {
+        let file=input.files[0]; if(!file) return;
+        let reader=new FileReader();
+        reader.onload=e=>{ try{
+            let data=JSON.parse(e.target.result);
+            if(Array.isArray(data)) { students=data; saveAllData(); renderStudentList(); alert("学生导入成功"); }
+            else alert("格式错误");
+        }catch(e){ alert("无效JSON"); } };
+        reader.readAsText(file); input.value="";
+    }
+    function importRankingsJSON(input) {
+        let file=input.files[0]; if(!file) return;
+        let reader=new FileReader();
+        reader.onload=e=>{ try{
+            let data=JSON.parse(e.target.result);
+            if(Array.isArray(data)) { rankings=data; saveAllData(); renderRanking(); alert("排行榜导入成功"); }
+            else alert("格式错误");
+        }catch(e){ alert("无效JSON"); } };
+        reader.readAsText(file); input.value="";
+    }
+    function importQuestionsJSON(input) {
+        let file=input.files[0]; if(!file) return;
+        let reader=new FileReader();
+        reader.onload=e=>{ try{
+            let data=JSON.parse(e.target.result);
+            if(Array.isArray(data)) { questionBank=data; saveAllData(); renderAdminQuestions(); alert("题库导入成功"); }
+            else alert("格式错误");
+        }catch(e){ alert("无效JSON"); } };
+        reader.readAsText(file); input.value="";
+    }
+    function clearRankings() { if(confirm("清空所有排行榜记录?")){ rankings=[]; saveAllData(); renderRanking(); } }
+
+    // 面板切换
+    function showPanel(panelName) {
+        document.getElementById("panelStart").style.display="none";
+        document.getElementById("panelCall").style.display="none";
+        document.getElementById("panelStudents").style.display="none";
+        document.getElementById("panelRank").style.display="none";
+        document.getElementById("panelQuizDirect").style.display="none";
+        document.getElementById("panelQuiz").style.display="none";
+        document.getElementById("panelResult").style.display="none";
+        document.getElementById("panelAdmin").style.display="none";
+        if(panelName==="start") document.getElementById("panelStart").style.display="block";
+        else if(panelName==="call") document.getElementById("panelCall").style.display="block";
+        else if(panelName==="students") { renderStudentList(); document.getElementById("panelStudents").style.display="block"; }
+        else if(panelName==="rank") { renderRanking(); document.getElementById("panelRank").style.display="block"; }
+        else if(panelName==="quizDirect") document.getElementById("panelQuizDirect").style.display="block";
+        else if(panelName==="quiz") document.getElementById("panelQuiz").style.display="block";
+        else if(panelName==="result") document.getElementById("panelResult").style.display="block";
+        else if(panelName==="admin") { renderAdminQuestions(); hideEditor(); document.getElementById("panelAdmin").style.display="block"; }
+    }
+
+    function escapeHtml(str) { if(!str) return ''; return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+
+    // 初始化
+    loadData();
+    saveAllData();
+    renderStudentList();
+    renderRanking();
+    showPanel("start");
+</script>
+</body>
+</html>
